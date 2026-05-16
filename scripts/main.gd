@@ -139,9 +139,9 @@ func _setup_scene():
 	attractor_root = Node3D.new(); attractor_root.name = "Attractors"; add_child(attractor_root)
 
 	# 5 sand particle systems
-	p_sub  = _make_sand(1000,0.03,0.08); p_bass = _make_sand(800,0.025,0.06)
-	p_mid  = _make_sand(600,0.02,0.05); p_high = _make_sand(400,0.015,0.04)
-	p_air  = _make_sand(300,0.012,0.03)
+	p_sub  = _make_sand(1500,0.04,0.10); p_bass = _make_sand(1200,0.035,0.08)
+	p_mid  = _make_sand(900,0.03,0.07); p_high = _make_sand(600,0.02,0.05)
+	p_air  = _make_sand(400,0.015,0.04)
 	sand_systems = [p_sub,p_bass,p_mid,p_high,p_air]
 	_build_attractors()
 
@@ -301,9 +301,9 @@ func _process(delta):
 		t = audio.get_playback_position()
 		if band_data: f = band_data.frame_at(t)
 	else:
-		f["sub"]=sin(time*0.5)*0.5+0.5; f["bass"]=sin(time*0.7+1)*0.5+0.5
-		f["mid"]=sin(time*1.1+2)*0.5+0.5; f["high"]=sin(time*1.3+3)*0.5+0.5
-		f["air"]=sin(time*1.7+4)*0.5+0.5; f["rms"]=sin(time*0.3)*0.3+0.4
+		f["sub"]=sin(time*0.5)*0.4+0.6; f["bass"]=sin(time*0.7+1)*0.4+0.6
+		f["mid"]=sin(time*1.1+2)*0.4+0.6; f["high"]=sin(time*1.3+3)*0.4+0.6
+		f["air"]=sin(time*1.7+4)*0.4+0.6; f["rms"]=sin(time*0.3)*0.25+0.5
 
 	sub_v=f["sub"]; bass_v=f["bass"]; mid_v=f["mid"]; high_v=f["high"]; air_v=f["air"]
 	onset_v=f["onset"]; rms_v=f["rms"]; centroid_v=f["centroid"]
@@ -410,7 +410,7 @@ func _update_camera():
 func _input(event: InputEvent):
 	if event is InputEventKey and event.pressed:
 		match event.keycode:
-			KEY_TAB: mode=(mode+1)%mode_names.size() as Mode; return
+			KEY_TAB: mode = ((mode + 1) % 4) as Mode; return
 			KEY_SPACE: beat_e=3.0; return
 			KEY_C: palette_index=(palette_index+1)%PALETTES.size(); return
 			KEY_M: auto_orbit=not auto_orbit; return
