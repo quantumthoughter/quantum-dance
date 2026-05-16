@@ -27,11 +27,10 @@ enum Mode { SANDS, IMAGE_CLOUD, VIDEO_CRYSTAL, COMBINED }
 var mode: Mode = Mode.SANDS
 var mode_names = ["Sand Particles", "Image Cloud", "Video Crystal", "Combined"]
 
-# ── 5-band sand particles ──
+# ── Sand particles (MultiMesh — guaranteed Metal render) ──
+var sand_meshes: Array = []       # [{mmi, multimesh, count}]
+var sand_transforms: Array = []   # [{transforms[], colors[], speeds[]}]
 var sand_shader: ShaderMaterial
-var p_sub: GPUParticles3D; var p_bass: GPUParticles3D
-var p_mid: GPUParticles3D; var p_high: GPUParticles3D; var p_air: GPUParticles3D
-var sand_systems: Array = []
 var attractor_root: Node3D
 var attractors: Array = []
 
@@ -158,14 +157,13 @@ func _setup_scene():
 	# Sand shader
 	sand_shader = ShaderMaterial.new(); sand_shader.shader = load("res://shaders/sand.gdshader")
 
+	# 5 sand MultiMesh systems
+	_make_sand_system(0, 600, 0.04); _make_sand_system(1, 500, 0.035)
+	_make_sand_system(2, 400, 0.03); _make_sand_system(3, 300, 0.025)
+	_make_sand_system(4, 200, 0.02)
+
 	# Attractor root
 	attractor_root = Node3D.new(); attractor_root.name = "Attractors"; add_child(attractor_root)
-
-	# 5 sand particle systems
-	p_sub  = _make_sand(2000,0.06,0.15); p_bass = _make_sand(1500,0.05,0.12)
-	p_mid  = _make_sand(1200,0.04,0.10); p_high = _make_sand(900,0.03,0.08)
-	p_air  = _make_sand(600,0.02,0.06)
-	sand_systems = [p_sub,p_bass,p_mid,p_high,p_air]
 	_build_attractors()
 
 	# Image cloud container
@@ -215,29 +213,35 @@ func _on_logo_done():
 # ═══════════════════════════════════════════
 # SAND PARTICLES
 # ═══════════════════════════════════════════
-func _make_sand(amount: int, smin: float, smax: float) -> GPUParticles3D:
-	var ps = GPUParticles3D.new(); ps.emitting = true; ps.amount = amount
-	ps.lifetime = 5.0; ps.speed_scale = 0.5
-	ps.visibility_aabb = AABB(Vector3(-20,-20,-20),Vector3(40,40,40))
-	var pm = ParticleProcessMaterial.new()
-	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	pm.emission_sphere_radius = 3.0; pm.spread = 90.0
-	pm.gravity = Vector3.ZERO
-	pm.initial_velocity_min = 0.5; pm.initial_velocity_max = 1.5
-	pm.scale_min = smin; pm.scale_max = smax
-	pm.damping_min = 0.3; pm.damping_max = 0.7
-	pm.radial_accel_min = -1.5; pm.radial_accel_max = 0.5
-	pm.tangential_accel_min = -1.0; pm.tangential_accel_max = 1.0
-	ps.process_material = pm
-	var dp = MeshInstance3D.new(); var sp = SphereMesh.new()
-	sp.radius = 0.08; sp.height = 0.16; sp.radial_segments = 3; sp.rings = 1
-	dp.mesh = sp
+func _make_sand_system(band: int, count: int, scale: float):
+	var mm = MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.instance_count = count
+	var sp = SphereMesh.new(); sp.radius = 0.08; sp.height = 0.16; sp.radial_segments = 3; sp.rings = 1
+	mm.mesh = sp
+
+	var mmi = MultiMeshInstance3D.new()
+	mmi.multimesh = mm
 	var mat = StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_color = Color(1, 0.6, 0.2)
 	mat.emission_enabled = true; mat.emission = Color(1, 0.5, 0.1)
-	mat.emission_energy_multiplier = 5.0
-	dp.material_override = mat; ps.draw_pass_1 = dp; add_child(ps); return ps
+	mat.emission_energy_multiplier = 4.0
+	mmi.material_override = mat
+	add_child(mmi)
+
+	var transforms = []; transforms.resize(count)
+	var positions = []; positions.resize(count)
+	var velocities = []; velocities.resize(count)
+	var phases = []; phases.resize(count)
+	for i in count:
+		positions[i] = Vector3(randf_range(-3,3), randf_range(-3,3), randf_range(-3,3))
+		velocities[i] = Vector3(randf_range(-1,1), randf_range(-1,1), randf_range(-1,1)).normalized() * randf_range(0.3, 1.5)
+		phases[i] = randf() * TAU
+		transforms[i] = Transform3D(Basis(), positions[i])
+
+	sand_meshes.append({"mmi":mmi, "mm":mm, "count":count, "scale":scale})
+	sand_transforms.append({"pos":positions, "vel":velocities, "phases":phases, "tr":transforms})
 
 
 func _build_attractors():
@@ -345,18 +349,38 @@ func _process(delta):
 		video_sphere.position = Vector3(0, sin(time*0.2)*0.3, 0)
 		video_sphere.scale = Vector3.ONE*(1.0+bass_v*0.2)
 
-	# ── Sand particle systems ──
+	# ── Sand particle systems (MultiMesh) ──
 	var sand_visible = (mode == Mode.SANDS or mode == Mode.COMBINED)
-	for i in sand_systems.size():
-		sand_systems[i].visible = sand_visible
+	for i in sand_meshes.size():
+		var sm = sand_meshes[i]
+		sm["mmi"].visible = sand_visible
 		if not sand_visible: continue
-		sand_systems[i].speed_scale = 0.3+vals[i]*1.8
-		var dp = sand_systems[i].draw_pass_1
-		if dp:
-			var mat: StandardMaterial3D = dp.material_override
-			mat.albedo_color = cols[i]
-			mat.emission = cols[i]
-			mat.emission_energy_multiplier = 3.0 + vals[i] * 5.0
+		var mat: StandardMaterial3D = sm["mmi"].material_override
+		mat.albedo_color = cols[i]; mat.emission = cols[i]
+		mat.emission_energy_multiplier = 3.0 + vals[i] * 5.0
+
+		var st = sand_transforms[i]
+		var positions: Array = st["pos"]; var velocities: Array = st["vel"]
+		var phases: Array = st["phases"]; var transforms: Array = st["tr"]
+		for j in sm["count"]:
+			var vel = velocities[j]
+			var pos = positions[j]
+			# Orbital motion around center + band energy
+			var orbit_speed = 0.2 + vals[i] * 2.0
+			var angle = atan2(pos.z, pos.x) + delta * orbit_speed
+			var r = Vector2(pos.x, pos.z).length()
+			r = clampf(r + (randf() - 0.5) * delta * vals[i] * 3.0, 0.5, 5.0)
+			var h = pos.y + vel.y * delta * vals[i] * 2.0
+			h = clampf(h, -3.0, 3.0)
+			pos = Vector3(cos(angle)*r, h, sin(angle)*r)
+			# Gentle attraction toward center on beats
+			pos = pos.lerp(Vector3.ZERO, delta * beat_e * 0.5)
+			positions[j] = pos
+			transforms[j] = Transform3D(Basis().scaled(Vector3.ONE * (0.5 + vals[i])), pos)
+		sm["mm"].visible_instance_count = -1  # show all
+		# Bulk-set transforms — Godot 4 way
+		for j in sm["count"]:
+			sm["mm"].set_instance_transform(j, transforms[j])
 
 	# ── Update attractors ──
 	for att in attractors:
