@@ -129,6 +129,15 @@ func _setup_scene():
 	cam = Camera3D.new(); cam.current = true; cam.fov = 62; add_child(cam)
 	_update_camera()
 
+	# Center sun — proof of life, always visible
+	var sun = MeshInstance3D.new(); sun.name = "CenterSun"
+	var sun_sphere = SphereMesh.new(); sun_sphere.radius = 0.3; sun_sphere.height = 0.6
+	sun.mesh = sun_sphere
+	var sun_mat = StandardMaterial3D.new()
+	sun_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sun_mat.emission_enabled = true; sun_mat.emission = Color(1, 0.7, 0.3) * 3.0
+	sun.material_override = sun_mat; add_child(sun)
+
 	# Starfield
 	_create_starfield()
 
@@ -195,7 +204,7 @@ func _on_logo_done():
 func _make_sand(amount: int, smin: float, smax: float) -> GPUParticles3D:
 	var ps = GPUParticles3D.new(); ps.emitting = true; ps.amount = amount
 	ps.lifetime = 5.0; ps.speed_scale = 0.5
-	ps.visibility_aabb = AABB(Vector3(-15,-15,-15),Vector3(30,30,30))
+	ps.visibility_aabb = AABB(Vector3(-20,-20,-20),Vector3(40,40,40))
 	var pm = ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
 	pm.emission_sphere_radius = 5.0; pm.spread = 60.0
@@ -207,11 +216,12 @@ func _make_sand(amount: int, smin: float, smax: float) -> GPUParticles3D:
 	pm.tangential_accel_min = -1.0; pm.tangential_accel_max = 1.0
 	ps.process_material = pm
 	var dp = MeshInstance3D.new(); var sp = SphereMesh.new()
-	sp.radius = 0.03; sp.height = 0.06; sp.radial_segments = 3; sp.rings = 1
+	sp.radius = 0.06; sp.height = 0.12; sp.radial_segments = 3; sp.rings = 1
 	dp.mesh = sp
-	var mat = sand_shader.duplicate()
-	mat.set_shader_parameter("albedo",Color(0.8,0.5,0.2)); mat.set_shader_parameter("energy",2.0)
-	mat.set_shader_parameter("grain_size",1.2)
+	var mat = StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.emission_enabled = true; mat.emission = Color(1, 0.6, 0.2)
+	mat.emission_energy_multiplier = 3.0
 	dp.material_override = mat; ps.draw_pass_1 = dp; add_child(ps); return ps
 
 
@@ -254,10 +264,11 @@ func load_image_cloud(path: String):
 
 func _add_image_orb(pos: Vector3, col: Color):
 	var mesh = MeshInstance3D.new(); var s = SphereMesh.new()
-	s.radius = 0.04; s.height = 0.08; s.radial_segments = 3; s.rings = 1
+	s.radius = 0.06; s.height = 0.12; s.radial_segments = 3; s.rings = 1
 	mesh.mesh = s; mesh.position = pos
-	var mat = sand_shader.duplicate()
-	mat.set_shader_parameter("albedo",col); mat.set_shader_parameter("energy",2.5); mat.set_shader_parameter("grain_size",1.5)
+	var mat = StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.emission_enabled = true; mat.emission = col; mat.emission_energy_multiplier = 5.0
 	mesh.material_override = mat; image_cloud.add_child(mesh)
 	image_particles.append({"node":mesh,"base_pos":pos,"color":col,"phase":randf()*TAU})
 
@@ -327,8 +338,9 @@ func _process(delta):
 		sand_systems[i].speed_scale = 0.3+vals[i]*1.8
 		var dp = sand_systems[i].draw_pass_1
 		if dp:
-			var mat: ShaderMaterial = dp.material_override
-			mat.set_shader_parameter("albedo",cols[i]); mat.set_shader_parameter("energy",0.7+vals[i]*1.5)
+			var mat: StandardMaterial3D = dp.material_override
+			mat.emission = cols[i]
+			mat.emission_energy_multiplier = 2.0 + vals[i] * 4.0
 
 	# ── Update attractors ──
 	for att in attractors:
@@ -351,8 +363,8 @@ func _process(delta):
 			var spread = beat_e*2.5+(1.0+rms_v)*0.5
 			nd.position = bp+Vector3(sin(time*2+ph)*spread,cos(time*1.5+ph)*spread,sin(time*1.8+ph)*spread)
 			nd.scale = Vector3.ONE*(0.5+rms_v*1.5+beat_e*2.0)
-			var mat: ShaderMaterial = nd.material_override
-			if mat: mat.set_shader_parameter("energy",1.5+rms_v*2.0+beat_e*3.0)
+			var mat: StandardMaterial3D = nd.material_override
+			if mat: mat.emission_energy_multiplier = 3.0+rms_v*4.0+beat_e*6.0
 	else:
 		image_cloud.visible = false
 
